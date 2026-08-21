@@ -1,4 +1,10 @@
 services:
+  # ── Backend API ────────────────────────────────────────────────────────────
+  # By default it talks to PostgreSQL/Redis on the host (host.docker.internal).
+  # To run self-contained stacks use:  docker compose --profile db up
+  # and set DATABASE_URL / REDIS_URL accordingly, e.g.:
+  #   DATABASE_URL=postgres://postgres:admin@postgres:5432/postgres?options=--search_path=pharmacy
+  #   REDIS_URL=redis://redis:6379/
   backend:
     build:
       context: ./pharmacy_backend
@@ -9,7 +15,8 @@ services:
     ports:
       - "8081:8081"
     environment:
-      DATABASE_URL: postgres://postgres:admin@host.docker.internal:5432/postgres?options=--search_path=pharmacy
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:admin@host.docker.internal:5432/postgres?options=--search_path=pharmacy}
+      REDIS_URL: ${REDIS_URL:-redis://host.docker.internal:6379/}
       CORS_ALLOWED_ORIGINS: "http://localhost:3000"
       PORT: "8081"
       SERVER_ADDR: "0.0.0.0"
@@ -22,6 +29,8 @@ services:
       API_JWT_SECRET: "${API_JWT_SECRET}"
       API_JWT_SECRET_REFRESH: "${API_JWT_SECRET_REFRESH}"
       APP_TIMEZONE: "America/Mexico_City"
+      APP_NAME: "${APP_NAME:-Pharmacy}"
+      RUN_MIGRATIONS: "${RUN_MIGRATIONS:-false}"
     volumes:
       - ./pharmacy_backend/pem:/app/pem:ro
       - ./pharmacy_backend/logs:/app/logs
@@ -38,3 +47,46 @@ services:
       - backend
     ports:
       - "8185:8085"
+
+  # ── Optional local infrastructure (profile: db) ────────────────────────────
+  # Start with:  docker compose --profile db up postgres redis
+  postgres:
+    image: postgres:15-alpine
+    profiles: ["db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-admin}"
+      POSTGRES_DB: "postgres"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # One-shot init on first boot (fresh volume): place your SQL files in
+      # pharmacy_bd/ (DDL.sql, schemas.sql, sample_inserts.sql). Files run in
+      # alphabetical order against POSTGRES_DB.
+      - ./pharmacy_bd:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["db"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:

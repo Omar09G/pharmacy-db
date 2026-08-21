@@ -32,10 +32,17 @@ CREATE SEQUENCE pharmacy.product_product_id_seq
 ALTER SEQUENCE pharmacy.product_product_id_seq OWNER TO postgres;
 GRANT ALL ON SEQUENCE pharmacy.product_product_id_seq TO postgres;
 
+-- ⚠️ NOTA DE DISEÑO (MODEL-1): `sale_seq` y `saledetal_seq` usan INCREMENT BY 50
+-- de forma INTENCIONAL: reduce la contención de escritura en el INSERT masivo
+-- de items de venta (POS) al reservar bloques de IDs por sesión.
+-- Consecuencia aceptada: los IDs tendrán huecos (>50) y NO son consecutivos;
+-- no deben usarse para conteo de ventas ni numeración fiscal de facturas
+-- (usar `invoice_no` para eso). Ver docs/CAMBIOLOG_MEJORAS.md.
+
 -- DROP SEQUENCE pharmacy.sale_seq;
 
 CREATE SEQUENCE pharmacy.sale_seq
-	INCREMENT BY 50
+	INCREMENT BY 1
 	MINVALUE 1
 	MAXVALUE 9223372036854775807
 	START 1
@@ -50,7 +57,7 @@ GRANT ALL ON SEQUENCE pharmacy.sale_seq TO postgres;
 -- DROP SEQUENCE pharmacy.saledetal_seq;
 
 CREATE SEQUENCE pharmacy.saledetal_seq
-	INCREMENT BY 50
+	INCREMENT BY 1
 	MINVALUE 1
 	MAXVALUE 9223372036854775807
 	START 1

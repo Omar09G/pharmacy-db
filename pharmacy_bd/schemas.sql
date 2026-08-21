@@ -1614,3 +1614,15 @@ GRANT ALL ON FUNCTION pharmacy.fn_write_audit_log(text, text, int8, text, int8, 
 GRANT ALL ON SCHEMA pharmacy TO postgres;
 GRANT ALL ON SCHEMA pharmacy TO deupback;
 GRANT USAGE ON SCHEMA pharmacy TO public;
+-- ============================================================
+-- Índices adicionales (PERF-3) — parche aditivo, seguro de re-ejecutar.
+-- Cubre FKs y filtros frecuentes que no tenían índice dedicado.
+-- ============================================================
+CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON pharmacy.sale_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_items_product_id ON pharmacy.purchase_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_movements_location_id ON pharmacy.inventory_movements (location_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON pharmacy.audit_log (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_changed_at ON pharmacy.audit_log (changed_at);
+CREATE INDEX IF NOT EXISTS idx_purchases_supplier_status ON pharmacy.purchases (supplier_id, status);
+CREATE INDEX IF NOT EXISTS idx_users_status ON pharmacy.users (status);
+CREATE INDEX IF NOT EXISTS idx_customers_status ON pharmacy.customers (status);

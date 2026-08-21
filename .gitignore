@@ -1,11 +1,65 @@
-# Default ignored files
-/shelf/
-/workspace.xml
-# Editor-based HTTP Client requests
-/httpRequests/
-# Ignored default folder with query files
-/queries/
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
+# ============================================================
+# Pharmacy — Root .gitignore
+# Centraliza patrones de todos los subproyectos (backend, frontend, bd)
+# ============================================================
+
+# ─── Secrets & environment ──────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ─── Rust / Backend ──────────────────────────────────────────
+pharmacy_backend/target/
+pharmacy_backend/**/target/
+pharmacy_backend/logs/
+*.log
+
+# ─── Node / Frontend ─────────────────────────────────────────
+pharmacy-frontend/node_modules/
+pharmacy-frontend/dist/
+pharmacy-frontend/dist-ssr/
+pharmacy-frontend/.eslintcache
+pharmacy-frontend/*.local
+
+# ─── Build artifacts ─────────────────────────────────────────
+*.zip
+*.tar.gz
+*.tar
+*.rar
+*.7z
+*.exe
+*.dll
+*.so
+*.dylib
+*.tmp
+*.bak
+*.swp
+*.swo
+*.cache
+
+# ─── OS / Editor ─────────────────────────────────────────────
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 .idea/
+.vscode/
+*.iml
+
+# ─── Coverage ───────────────────────────────────────────────
+coverage/
+coverage.txt
+*.lcov
+
+# ─── Docker ──────────────────────────────────────────────────
+# Keep Dockerfiles and compose files tracked, ignore volumes/data
+pharmacy_backend/pem/
+pharmacy-frontend/android/app/build/
+pharmacy-frontend/android/.gradle/
