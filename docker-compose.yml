@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: ./pharmacy_backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8081:8081"
+    environment:
+      DATABASE_URL: postgres://postgres:admin@host.docker.internal:5432/postgres?options=--search_path=pharmacy
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000"
+      PORT: "8081"
+      SERVER_ADDR: "0.0.0.0"
+      JWT_EXPIRATION: "3600"
+      LOG_LEVEL: "info"
+      RUST_LOG: "info"
+      PASSWORD_SALT: "${PASSWORD_SALT}"
+      API_JWT_PRIVATE_PEM_PATH: "./pem/jwt_private.pem"
+      API_JWT_PUBLIC_PEM_PATH: "./pem/jwt_public.pem"
+      API_JWT_SECRET: "${API_JWT_SECRET}"
+      API_JWT_SECRET_REFRESH: "${API_JWT_SECRET_REFRESH}"
+      APP_TIMEZONE: "America/Mexico_City"
+    volumes:
+      - ./pharmacy_backend/pem:/app/pem:ro
+      - ./pharmacy_backend/logs:/app/logs
+
+  frontend:
+    build:
+      context: ./pharmacy-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8081/v1/api
+        VITE_APP_TIMEZONE: America/Mexico_City
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8185:8085"
