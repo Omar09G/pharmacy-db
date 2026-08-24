@@ -63,3 +63,7 @@ coverage.txt
 pharmacy_backend/pem/
 pharmacy-frontend/android/app/build/
 pharmacy-frontend/android/.gradle/
+.claude/
+.agents/
+.md
+docs/

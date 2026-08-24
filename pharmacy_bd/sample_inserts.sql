@@ -9,6 +9,16 @@ INSERT INTO pharmacy.roles (id, name, description, created_at) VALUES
 (1, 'admin', 'Administrador', now()),
 (2, 'cashier', 'Cajero', now());
 
+-- Grants usados por el backend (authz_middleware):
+--   PRODUCT_MANAGEMENT -> escritura de productos/inventario/compras
+--   SALES_MANAGER      -> escritura de ventas/caja/clientes
+INSERT INTO pharmacy.permissions (name, description) VALUES
+('PRODUCT_MANAGEMENT', 'Gestión de productos, inventario y compras'),
+('SALES_MANAGER', 'Gestión de ventas, caja y clientes'),
+('CLIENT_SERVICE', 'Atención a clientes'),
+('SALES', 'Registro de ventas'),
+('ADMIN', 'Administración general');
+
 INSERT INTO pharmacy.users (id, username, password_hash, full_name, email, status, created_at) VALUES
 (1, 'admin', 'hash_admin', 'Admin User', 'admin@example.com', 'active', now()),
 (2, 'cashier', 'hash_cashier', 'Cashier User', 'cashier@example.com', 'active', now());

@@ -1398,6 +1398,10 @@ AS $function$
 BEGIN
   TRUNCATE TABLE pharmacy.vw_t_cash_journal_balance;
 
+  -- Balance per journal: entries belong to the journal whose
+  -- [opened_at, closed_at] window contains their recorded_at. This makes
+  -- sale-linked entries ('sale') count alongside manual inflows/outflows,
+  -- instead of requiring an explicit related_type='cash_journal' link.
   INSERT INTO pharmacy.vw_t_cash_journal_balance(
     cash_journal_id, name, opening_amount, opened_at, closed_at, inflow, outflow, balance)
   SELECT
@@ -1406,11 +1410,29 @@ BEGIN
     cj.opening_amount,
     cj.opened_at,
     cj.closed_at,
-    COALESCE(SUM(ce.amount) FILTER (WHERE ce.entry_type IN ('inflow','sale') AND (p_start IS NULL OR ce.recorded_at >= p_start) AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0)::numeric(14,2) AS inflow,
-    COALESCE(SUM(ce.amount) FILTER (WHERE ce.entry_type IN ('outflow','expense') AND (p_start IS NULL OR ce.recorded_at >= p_start) AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0)::numeric(14,2) AS outflow,
-    (cj.opening_amount + COALESCE(SUM(ce.amount) FILTER (WHERE ce.entry_type IN ('inflow','sale') AND (p_start IS NULL OR ce.recorded_at >= p_start) AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0) - COALESCE(SUM(ce.amount) FILTER (WHERE ce.entry_type IN ('outflow','expense') AND (p_start IS NULL OR ce.recorded_at >= p_start) AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0))::numeric(14,2) AS balance
+    COALESCE(SUM(ce.amount) FILTER (
+      WHERE ce.entry_type IN ('inflow','sale')
+        AND (p_start IS NULL OR ce.recorded_at >= p_start)
+        AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0)::numeric(14,2) AS inflow,
+    COALESCE(SUM(ce.amount) FILTER (
+      WHERE ce.entry_type IN ('outflow','expense')
+        AND (p_start IS NULL OR ce.recorded_at >= p_start)
+        AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0)::numeric(14,2) AS outflow,
+    (cj.opening_amount
+      + COALESCE(SUM(ce.amount) FILTER (
+          WHERE ce.entry_type IN ('inflow','sale')
+            AND (p_start IS NULL OR ce.recorded_at >= p_start)
+            AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0)
+      - COALESCE(SUM(ce.amount) FILTER (
+          WHERE ce.entry_type IN ('outflow','expense')
+            AND (p_start IS NULL OR ce.recorded_at >= p_start)
+            AND (p_end IS NULL OR ce.recorded_at <= p_end)), 0))::numeric(14,2) AS balance
   FROM pharmacy.cash_journals cj
-  LEFT JOIN pharmacy.cash_entries ce ON ce.related_type = 'cash_journal' AND ce.related_id = cj.id
+  LEFT JOIN pharmacy.cash_entries ce
+    ON ce.recorded_at >= cj.opened_at
+   AND (cj.closed_at IS NULL OR ce.recorded_at <= cj.closed_at)
+   AND (p_start IS NULL OR ce.recorded_at >= p_start)
+   AND (p_end IS NULL OR ce.recorded_at <= p_end)
   WHERE (p_cash_journal_id IS NULL OR p_cash_journal_id = 0 OR cj.id = p_cash_journal_id)
   GROUP BY cj.id, cj.name, cj.opening_amount, cj.opened_at, cj.closed_at
   ORDER BY cj.id;
@@ -1486,16 +1508,21 @@ BEGIN
     cu.name AS customer_name,
     s.date AS invoice_date,
     (s.date + (COALESCE(cu.terms_days, 0) * INTERVAL '1 day'))::date AS due_date,
-    COALESCE((SELECT sum(sp.amount) FROM pharmacy.sale_payments sp WHERE sp.sale_id = s.id), 0)::numeric(14,2) AS paid_amount,
-    (s.total - COALESCE((SELECT sum(sp.amount) FROM pharmacy.sale_payments sp WHERE sp.sale_id = s.id), 0))::numeric(14,2) AS outstanding,
+    COALESCE(pa.total_paid, 0)::numeric(14,2) AS paid_amount,
+    (s.total - COALESCE(pa.total_paid, 0))::numeric(14,2) AS outstanding,
     CASE
-      WHEN (s.total - COALESCE((SELECT sum(sp.amount) FROM pharmacy.sale_payments sp WHERE sp.sale_id = s.id), 0)) <= 0 THEN 'paid'
+      WHEN (s.total - COALESCE(pa.total_paid, 0)) <= 0 THEN 'paid'
       WHEN l_as_of > (s.date + (COALESCE(cu.terms_days, 0) * INTERVAL '1 day'))::date THEN 'overdue'
       ELSE 'open'
     END AS invoice_status,
     GREATEST(((l_as_of) - ((s.date + (COALESCE(cu.terms_days, 0) * INTERVAL '1 day'))::date))::int, 0) AS days_overdue
   FROM pharmacy.sales s
   LEFT JOIN pharmacy.customers cu ON cu.id = s.customer_id
+  LEFT JOIN (
+    SELECT sale_id, sum(amount) AS total_paid
+    FROM pharmacy.sale_payments
+    GROUP BY sale_id
+  ) pa ON pa.sale_id = s.id
   WHERE s.is_credit = TRUE
     AND s.status IS DISTINCT FROM 'cancelled'
     AND (p_customer_id IS NULL OR p_customer_id = 0 OR s.customer_id = p_customer_id);
@@ -1578,10 +1605,20 @@ BEGIN
     p.id AS product_id,
     p.sku,
     p.name AS product_name,
-    COALESCE((SELECT sum(pl.qty_on_hand) FROM pharmacy.product_lots pl WHERE pl.product_id = p.id), 0)::numeric(14,4) AS qty_on_hand,
-    (SELECT max(pl.expiry_date) FROM pharmacy.product_lots pl WHERE pl.product_id = p.id) AS max_expiry_date,
-    (SELECT max(im.created_at) FROM pharmacy.inventory_movements im WHERE im.product_id = p.id) AS last_movement_at
+    COALESCE(lot_agg.qty_on_hand, 0)::numeric(14,4) AS qty_on_hand,
+    lot_agg.max_expiry_date,
+    mov_agg.last_movement_at
   FROM pharmacy.products p
+  LEFT JOIN (
+    SELECT product_id, sum(qty_on_hand) AS qty_on_hand, max(expiry_date) AS max_expiry_date
+    FROM pharmacy.product_lots
+    GROUP BY product_id
+  ) lot_agg ON lot_agg.product_id = p.id
+  LEFT JOIN (
+    SELECT product_id, max(created_at) AS last_movement_at
+    FROM pharmacy.inventory_movements
+    GROUP BY product_id
+  ) mov_agg ON mov_agg.product_id = p.id
   WHERE (p_product_id IS NULL OR p_product_id = 0 OR p.id = p_product_id)
   ORDER BY p.id;
 
